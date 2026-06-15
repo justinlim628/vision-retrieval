@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# data (large files)
+data/
+*.csv
+*.h5
+*.pkl
+
+# model weights
+*.pt
+*.pth
+*.bin
+
+# Conda/venv
+env/
+venv/
+
+# Embeddings & Index
+*.npy
+*.index
+
+# VSCode
+.vscode/
+
+# Claude
+.claude/
