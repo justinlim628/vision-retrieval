@@ -12,3 +12,5 @@ CLIP_MODEL = "ViT-B-32"
 CLIP_PRETRAINED = "openai"
 
 DEFAULT_K = 9
+LABEL_K = 10
+CATEGORIES = ['person', 'car', 'truck', 'dog', 'cat']
