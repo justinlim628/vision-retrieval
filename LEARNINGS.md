@@ -21,9 +21,30 @@
 
 ---
 
+## 2026-06-16
+
+### Session: Add auto-label tab (image upload → pseudo-labeling via FAISS neighbors)
+
+1. **`open_clip.create_model_and_transforms()` returns `(model, preprocess, _)` — `preprocess` was being discarded.**
+   The middle return value is a torchvision transform that resizes and normalizes images to CLIP's expected input (224×224, ImageNet stats). It is required for `model.encode_image()`. Previously discarded as `_`, it now must be captured and returned from `load_model()` and passed to `encode_image()`.
+
+2. **Weighted vote is a clean multi-label confidence formula: `confidence(c) = Σ score_i [c ∈ labels_i] / Σ score_i`.**
+   Confidences are computed independently per category and intentionally don't sum to 100% — an image tagged "car, truck" boosts both. Normalizing by total neighbor score (not count) gives higher weight to more similar images.
+
+3. **`labels` column in metadata.csv is a Python list string, not JSON — use `ast.literal_eval()` to parse it.**
+   The column stores values like `"['car', 'truck']"` with single quotes. `json.loads()` would fail; `ast.literal_eval()` handles it correctly.
+
+4. **Feature branch workflow for new features: branch → commit → fast-forward merge → delete branch.**
+   `git checkout -b feature/X` → implement → `git commit` → `git checkout main` → `git merge feature/X` (fast-forward when main hasn't diverged) → `git branch -d feature/X`. Keep commits focused on one logical change.
+
+5. **Wrapping existing Gradio UI in tabs requires nesting components inside `with gr.Tab("name"):` blocks.**
+   No components need to be recreated — just indent them under `gr.Tab`. Event handlers (`.click()`, `.submit()`) remain inside the same `gr.Tab` block as their components.
+
+---
+
 ## TODO (next session)
 
-- [ ] Add auto-labeling feature to Gradio app (single-label or multi-label tab)
 - [ ] Add clustering / outlier visualization tab to Gradio app
 - [ ] Consider adding a `scripts/build_index.py` to regenerate embeddings and FAISS index from scratch
-- [ ] Explore adding image upload search (encode image → FAISS search) alongside text search
+- [ ] Explore image-to-image search tab (encode uploaded image → FAISS search → show visually similar results)
+- [ ] Add confidence threshold display note or visual bar chart to auto-label tab (e.g. `gr.BarPlot`) for better readability

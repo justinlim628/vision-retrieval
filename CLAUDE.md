@@ -8,8 +8,9 @@ A CLIP-based semantic image search and auto-labeling pipeline over the COCO val2
 vision_retrieval/
 ├── src/
 │   ├── config.py            # Paths and constants (single source of truth)
-│   ├── clip_model.py        # CLIP model loading and text encoding
-│   └── search.py            # FAISS index loading and similarity search
+│   ├── clip_model.py        # CLIP model loading, text encoding, image encoding
+│   ├── search.py            # FAISS index loading and similarity search
+│   └── labeling.py          # Pseudo-label aggregation (weighted vote over neighbors)
 ├── app.py                   # Gradio web app entrypoint
 ├── notebooks/
 │   ├── 00_coco_dataset_exp.ipynb   # COCO annotation parsing → metadata.csv
@@ -56,7 +57,7 @@ Opens at `http://127.0.0.1:7860`. The app loads the CLIP model and FAISS index o
 pip install -r requirements.txt
 ```
 
-## Data Flow (search feature)
+## Data Flow (search tab)
 
 ```
 User text query
@@ -66,6 +67,19 @@ User text query
   → PIL.Image.open()     # load from data/coco/images/val2017/
   → gr.Gallery           # display with similarity score captions
 ```
+
+## Data Flow (auto-label tab)
+
+```
+User uploads image (PIL)
+  → encode_image()       # preprocess + model.encode_image() + L2 normalize → (1, 512)
+  → faiss.search(k=10)   # cosine similarity → top 10 neighbors
+  → pseudo_label()       # weighted vote: confidence(c) = Σ score_i [c ∈ labels_i] / Σ score_i
+  → gr.Dataframe         # all 5 categories sorted by confidence
+  → gr.Gallery           # 10 similar images with similarity score captions
+```
+
+**Note:** `load_model()` returns `(model, preprocess, tokenizer, device)` — `preprocess` is the torchvision transform from `open_clip.create_model_and_transforms()` needed for image encoding.
 
 ## Code Style
 
