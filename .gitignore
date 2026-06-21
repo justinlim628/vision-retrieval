@@ -30,3 +30,6 @@ venv/
 
 # Claude
 .claude/
+
+# Claude Plugins
+.superpowers

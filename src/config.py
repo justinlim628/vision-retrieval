@@ -14,3 +14,6 @@ CLIP_PRETRAINED = "openai"
 DEFAULT_K = 9
 LABEL_K = 10
 CATEGORIES = ['person', 'car', 'truck', 'dog', 'cat']
+
+EMBEDDINGS_PATH = DATA_DIR / 'embeddings.npy'
+N_CLUSTERS = 10
