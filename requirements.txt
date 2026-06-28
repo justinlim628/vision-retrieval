@@ -4,3 +4,9 @@ faiss-cpu
 pandas
 Pillow
 gradio
+scikit-learn
+fastapi
+uvicorn[standard]
+python-multipart
+httpx
+pytest

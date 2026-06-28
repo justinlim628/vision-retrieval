@@ -1,0 +1,121 @@
+import ast
+import io
+from contextlib import asynccontextmanager
+
+import numpy as np
+from fastapi import FastAPI, File, UploadFile
+from fastapi.staticfiles import StaticFiles
+from PIL import Image
+
+from src.config import EMBEDDINGS_PATH, IMAGES_DIR, INDEX_PATH, LABEL_K, METADATA_PATH
+from src.clip_model import encode_image, encode_text, load_model
+from src.curation import get_cluster_choices, load_curation_data
+from src.labeling import pseudo_label
+from src.search import load_index, search
+
+from api.schemas import (
+    ClusterBrowseRequest,
+    ClusterChoice,
+    ClustersResponse,
+    ImageResult,
+    LabelResponse,
+    LabelResult,
+    OutliersRequest,
+    SearchRequest,
+    SearchResponse,
+)
+
+state: dict = {}
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print('Loading CLIP model...')
+    state['model'], state['preprocess'], state['tokenizer'], state['device'] = load_model()
+    print('Loading FAISS index...')
+    state['index'], state['metadata'] = load_index(INDEX_PATH, METADATA_PATH)
+    print('Computing curation data...')
+    state['cluster_labels'], state['outlier_scores'] = load_curation_data(
+        EMBEDDINGS_PATH, state['index'], state['metadata']
+    )
+    state['cluster_choices'] = get_cluster_choices(state['cluster_labels'], state['metadata'])
+    print('Ready.')
+    yield
+
+
+app = FastAPI(title='CLIP Image Search API', lifespan=lifespan)
+app.mount('/images', StaticFiles(directory=str(IMAGES_DIR)), name='images')
+
+
+@app.post('/label', response_model=LabelResponse)
+async def label_endpoint(file: UploadFile = File(...)):
+    contents = await file.read()
+    image = Image.open(io.BytesIO(contents)).convert('RGB')
+    embedding = encode_image(image, state['model'], state['preprocess'], state['device'])
+    results = search(embedding, state['index'], state['metadata'], k=LABEL_K)
+    label_results = pseudo_label(results)
+    return LabelResponse(
+        labels=[LabelResult(label=r['label'], confidence=r['confidence']) for r in label_results],
+        similar_images=[
+            ImageResult(file_name=row['file_name'], score=row['score'])
+            for _, row in results.iterrows()
+        ],
+    )
+
+
+@app.post('/outliers', response_model=SearchResponse)
+def outliers_endpoint(req: OutliersRequest):
+    if req.category == 'All':
+        indices = np.argsort(state['outlier_scores'])[::-1][:req.top_n]
+        rows = state['metadata'].iloc[indices]
+        scores = state['outlier_scores'][indices]
+    else:
+        mask = state['metadata']['labels'].apply(
+            lambda s: req.category in ast.literal_eval(s)
+        )
+        sub_meta = state['metadata'][mask]
+        sub_scores = state['outlier_scores'][mask.values]
+        order = np.argsort(sub_scores)[::-1][:req.top_n]
+        rows = sub_meta.iloc[order]
+        scores = sub_scores[order]
+    return SearchResponse(
+        results=[
+            ImageResult(file_name=row['file_name'], score=float(score))
+            for (_, row), score in zip(rows.iterrows(), scores)
+        ]
+    )
+
+
+@app.get('/clusters', response_model=ClustersResponse)
+def clusters_endpoint():
+    return ClustersResponse(
+        clusters=[
+            ClusterChoice(label=label, cluster_id=cid)
+            for label, cid in state['cluster_choices']
+        ]
+    )
+
+
+@app.post('/clusters/browse', response_model=SearchResponse)
+def browse_cluster(req: ClusterBrowseRequest):
+    mask = state['cluster_labels'] == req.cluster_id
+    rows = state['metadata'][mask]
+    sample = rows.sample(n=min(req.k, len(rows)), random_state=0)
+    return SearchResponse(
+        results=[
+            ImageResult(file_name=row['file_name'], score=1.0)
+            for _, row in sample.iterrows()
+        ]
+    )
+
+
+@app.post('/search', response_model=SearchResponse)
+def search_endpoint(req: SearchRequest):
+    embedding = encode_text(req.query, state['model'], state['tokenizer'], state['device'])
+    results = search(embedding, state['index'], state['metadata'], k=req.k)
+    return SearchResponse(
+        results=[
+            ImageResult(file_name=row['file_name'], score=row['score'])
+            for _, row in results.iterrows()
+        ]
+    )

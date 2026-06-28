@@ -33,3 +33,9 @@ venv/
 
 # Claude Plugins
 .superpowers
+
+# Superpowers specs (local planning docs)
+docs/superpowers/
+
+# local personal notes
+docs/learning/
