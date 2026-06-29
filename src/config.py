@@ -17,3 +17,5 @@ CATEGORIES = ['person', 'car', 'truck', 'dog', 'cat']
 
 EMBEDDINGS_PATH = DATA_DIR / 'embeddings.npy'
 N_CLUSTERS = 10
+
+DB_PATH = 'sqlite:///data/app.db'

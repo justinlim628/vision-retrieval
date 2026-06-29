@@ -1,11 +1,14 @@
 import ast
 import io
 from contextlib import asynccontextmanager
+from typing import Annotated
 
 import numpy as np
-from fastapi import FastAPI, File, UploadFile
+from fastapi import Depends, FastAPI, File, UploadFile
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import Session, select
 
 from src.config import EMBEDDINGS_PATH, IMAGES_DIR, INDEX_PATH, LABEL_K, METADATA_PATH
 from src.clip_model import encode_image, encode_text, load_model
@@ -13,14 +16,19 @@ from src.curation import get_cluster_choices, load_curation_data
 from src.labeling import pseudo_label
 from src.search import load_index, search
 
+from api.database import Favorite, SearchHistory, create_db_and_tables, get_session
 from api.schemas import (
     ClusterBrowseRequest,
     ClusterChoice,
     ClustersResponse,
+    FavoriteItem,
+    FavoritesResponse,
+    HistoryResponse,
     ImageResult,
     LabelResponse,
     LabelResult,
     OutliersRequest,
+    SearchHistoryItem,
     SearchRequest,
     SearchResponse,
 )
@@ -39,6 +47,7 @@ async def lifespan(app: FastAPI):
         EMBEDDINGS_PATH, state['index'], state['metadata']
     )
     state['cluster_choices'] = get_cluster_choices(state['cluster_labels'], state['metadata'])
+    create_db_and_tables()
     print('Ready.')
     yield
 
@@ -110,12 +119,49 @@ def browse_cluster(req: ClusterBrowseRequest):
 
 
 @app.post('/search', response_model=SearchResponse)
-def search_endpoint(req: SearchRequest):
+def search_endpoint(
+    req: SearchRequest,
+    session: Annotated[Session, Depends(get_session)],
+):
     embedding = encode_text(req.query, state['model'], state['tokenizer'], state['device'])
     results = search(embedding, state['index'], state['metadata'], k=req.k)
-    return SearchResponse(
+    response = SearchResponse(
         results=[
             ImageResult(file_name=row['file_name'], score=row['score'])
             for _, row in results.iterrows()
         ]
+    )
+    session.add(SearchHistory(query=req.query, result_count=len(response.results)))
+    session.commit()
+    return response
+
+
+@app.get('/history', response_model=HistoryResponse)
+def history_endpoint(session: Annotated[Session, Depends(get_session)]):
+    rows = session.exec(
+        select(SearchHistory).order_by(SearchHistory.timestamp.desc(), SearchHistory.id.desc())
+    ).all()
+    return HistoryResponse(
+        history=[SearchHistoryItem.model_validate(r, from_attributes=True) for r in rows]
+    )
+
+
+@app.post('/favorites/{file_name}', response_model=FavoriteItem)
+def add_favorite(file_name: str, session: Annotated[Session, Depends(get_session)]):
+    fav = Favorite(file_name=file_name)
+    session.add(fav)
+    try:
+        session.commit()
+        session.refresh(fav)
+    except IntegrityError:
+        session.rollback()
+        fav = session.exec(select(Favorite).where(Favorite.file_name == file_name)).one()
+    return FavoriteItem.model_validate(fav, from_attributes=True)
+
+
+@app.get('/favorites', response_model=FavoritesResponse)
+def list_favorites(session: Annotated[Session, Depends(get_session)]):
+    rows = session.exec(select(Favorite).order_by(Favorite.timestamp.desc())).all()
+    return FavoritesResponse(
+        favorites=[FavoriteItem.model_validate(r, from_attributes=True) for r in rows]
     )

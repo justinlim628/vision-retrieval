@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -42,3 +44,24 @@ class ClustersResponse(BaseModel):
 class OutliersRequest(BaseModel):
     top_n: int = 20
     category: str = 'All'
+
+
+class SearchHistoryItem(BaseModel):
+    id: int
+    query: str
+    result_count: int
+    timestamp: datetime
+
+
+class HistoryResponse(BaseModel):
+    history: list[SearchHistoryItem]
+
+
+class FavoriteItem(BaseModel):
+    id: int
+    file_name: str
+    timestamp: datetime
+
+
+class FavoritesResponse(BaseModel):
+    favorites: list[FavoriteItem]
