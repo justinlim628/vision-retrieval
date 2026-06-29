@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "clip-search": {
+      "command": "C:\\Users\\justi\\miniconda3\\envs\\vision-retrieval\\python.exe",
+      "args": ["C:\\Users\\justi\\Projects\\vision_retrieval\\mcp_server\\server.py"]
+    }
+  }
+}
